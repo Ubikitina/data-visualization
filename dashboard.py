@@ -142,7 +142,7 @@ def chart2(palette):
 
 
 # =====================================
-#   GRÁFICO 3: Top 10 Categorías de Ataque
+#   GRÁFICO 3: Categorías de Ataque
 # =====================================
 def chart3(palette):
     attack_cat_count = full_data[full_data['Label'] == 1]['attack_cat'].value_counts().nlargest(10).reset_index()
@@ -154,7 +154,7 @@ def chart3(palette):
         color=alt.Color('attack_cat:N', legend=None),
         tooltip=['attack_cat:N', 'count:Q']
     ).properties(
-        title='Top 10 categorías de ataque'
+        title='Categorías de ataque'
     )
     return attack_chart
 
@@ -332,34 +332,6 @@ def chart11(malicious_data, palette):
 
 
 
-# =====================================
-#   GRÁFICO 13: Función genérica gráfico facetado
-# =====================================
-def chart13(malicious_data, palette, column='service'):
-    # Agrupar y contar por tipo de ataque y columna seleccionada
-    count_df = malicious_data.groupby(['attack_cat', column]).size().reset_index(name='count')
-
-    pie = alt.Chart(count_df).mark_arc(innerRadius=50).encode(
-        theta=alt.Theta('count:Q', title='Cantidad'),
-        color=alt.Color(f'{column}:N', legend=alt.Legend(title=column.capitalize())),
-        tooltip=[
-            alt.Tooltip(f'{column}:N', title=column.capitalize()),
-            alt.Tooltip('count:Q', title='Cantidad'),
-        ]
-    ).properties(
-        width=200,
-        height=200
-    ).facet(
-        column=alt.Column('attack_cat:N', title='Tipo de ataque', header=alt.Header(labelAngle=270))
-    ).resolve_scale(
-        color='shared'
-    ).properties(
-        title=f'Distribución de {column} por tipo de ataque'
-    )
-
-    return pie
-
-
 
 # =====================================
 #   GRÁFICO 14: Función genérica gráfico facetado
@@ -369,7 +341,7 @@ def chart14(malicious_data, palette, attack_cat):
     df_filtered = malicious_data[malicious_data['attack_cat'] == attack_cat]
 
     # Selección de variables para mostrar
-    variables = ['service', 'sport', 'dsport', 'proto']
+    variables = ['proto', 'service', 'state', 'sport', 'dsport', 'is_ftp_login', 'is_sm_ips_ports']
 
     # Melt para poner las variables en una columna y contar
     df_melted = df_filtered.melt(id_vars=['attack_cat'], value_vars=variables,
@@ -389,7 +361,8 @@ def chart14(malicious_data, palette, attack_cat):
         width=200,
         height=200
     ).facet(
-        column=alt.Column('Variable:N', title='Variable', header=alt.Header(labelAngle=270))
+        column=alt.Column('Variable:N', title='Variable', header=alt.Header(labelAngle=270), sort=variables),
+        columns=4
     ).resolve_scale(
         color='independent'
     ).properties(
@@ -463,16 +436,8 @@ with tab1:
         st.altair_chart(chart5(security_palette, df_c4_c5), use_container_width=True)
 
 with tab2:
-    st.header("Análisis del Tráfico Malicioso")
-    st.write("Próximamente: análisis detallado del tráfico malicioso.")
-
-    pie_col = st.selectbox(
-        "Selecciona la variable para el gráfico de tartas:",
-        options=['service', 'sport'],
-        format_func=lambda x: 'Servicio' if x == 'service' else 'Puerto de Origen'
-    )
-
-    st.altair_chart(chart13(malicious_data, security_palette, column=pie_col), use_container_width=True)
+    st.header("Composición del Tráfico Malicioso")
+    st.write("Se presentan 7 gráficos de tarta que muestran cómo se distribuye el tráfico malicioso según distintas variables categóricas. Esto permite comprender la composición del tráfico malicioso y las características particulares de cada tipo de ataque.")
 
     attack_cat_selected = st.selectbox(
         "Selecciona el tipo de ataque:",
