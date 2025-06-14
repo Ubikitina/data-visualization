@@ -199,9 +199,9 @@ def chart5(palette, data):
 
 
 # =====================================
-#   GRÁFICO 8: IPs origen y destino con tráfico malicioso
+#   GRÁFICO 6: IPs origen y destino con tráfico malicioso
 # =====================================
-def chart8(palette):
+def chart6(palette):
     # Filtrar tráfico malicioso
     malicious_data = full_data[full_data['Label'] == 1]
 
@@ -236,9 +236,9 @@ def chart8(palette):
     return top_src_ips_chart, top_dst_ips_chart
 
 # =====================================
-#   GRÁFICO 9: Promedio de Spkts y Dpkts por tipo de ataque
+#   GRÁFICO 7: Promedio de Spkts y Dpkts por tipo de ataque
 # =====================================
-def chart9(malicious_data, palette):
+def chart7(malicious_data, palette):
     # Calcular promedios
     spkts_mean = malicious_data.groupby('attack_cat')['Spkts'].mean().reset_index()
     dpkts_mean = malicious_data.groupby('attack_cat')['Dpkts'].mean().reset_index()
@@ -340,16 +340,17 @@ def chart14(malicious_data, palette, attack_cat):
     # Filtrar por el ataque seleccionado
     df_filtered = malicious_data[malicious_data['attack_cat'] == attack_cat]
 
-    # Selección de variables para mostrar
-    variables = ['proto', 'service', 'state', 'sport', 'dsport', 'is_ftp_login', 'is_sm_ips_ports']
+    # Primer grupo de variables
+    variables1 = ['proto', 'service', 'state']
+    # Segundo grupo de variables
+    variables2 = ['sport', 'dsport', 'is_ftp_login', 'is_sm_ips_ports']
 
-    # Melt para poner las variables en una columna y contar
-    df_melted = df_filtered.melt(id_vars=['attack_cat'], value_vars=variables,
-                                 var_name='Variable', value_name='Valor')
+    # Melt y conteo para el primer grupo
+    df_melted1 = df_filtered.melt(id_vars=['attack_cat'], value_vars=variables1,
+                                  var_name='Variable', value_name='Valor')
+    count_df1 = df_melted1.groupby(['Variable', 'Valor']).size().reset_index(name='count')
 
-    count_df = df_melted.groupby(['Variable', 'Valor']).size().reset_index(name='count')
-
-    pie = alt.Chart(count_df).mark_arc(innerRadius=50).encode(
+    pie1 = alt.Chart(count_df1).mark_arc(innerRadius=50).encode(
         theta=alt.Theta('count:Q', title='Cantidad'),
         color=alt.Color('Valor:N', legend=alt.Legend(title='Valor')),
         tooltip=[
@@ -361,16 +362,93 @@ def chart14(malicious_data, palette, attack_cat):
         width=200,
         height=200
     ).facet(
-        column=alt.Column('Variable:N', title='Variable', header=alt.Header(labelAngle=270), sort=variables),
+        column=alt.Column('Variable:N', title='Variable', header=alt.Header(labelAngle=270), sort=variables1),
+        columns=3
+    ).resolve_scale(
+        color='independent'
+    )
+
+    # Melt y conteo para el segundo grupo
+    df_melted2 = df_filtered.melt(id_vars=['attack_cat'], value_vars=variables2,
+                                  var_name='Variable', value_name='Valor')
+    count_df2 = df_melted2.groupby(['Variable', 'Valor']).size().reset_index(name='count')
+
+    pie2 = alt.Chart(count_df2).mark_arc(innerRadius=50).encode(
+        theta=alt.Theta('count:Q', title='Cantidad'),
+        color=alt.Color('Valor:N', legend=alt.Legend(title='Valor')),
+        tooltip=[
+            alt.Tooltip('Variable:N', title='Variable'),
+            alt.Tooltip('Valor:N', title='Valor'),
+            alt.Tooltip('count:Q', title='Cantidad'),
+        ]
+    ).properties(
+        width=200,
+        height=200
+    ).facet(
+        column=alt.Column('Variable:N', title='Variable', header=alt.Header(labelAngle=270), sort=variables2),
         columns=4
     ).resolve_scale(
         color='independent'
-    ).properties(
-        title=f'Distribución de variables para ataque {attack_cat}'
     )
 
-    return pie
+    return pie1, pie2
 
+
+# =====================================
+#   GRÁFICO 15: Distribución de bytes por tipo de tráfico
+# =====================================
+def chart15(df, palette):
+    cols = ['Label', 'sbytes', 'dbytes']
+    df_small = df[cols]
+
+    # Transformar a formato largo
+    df_melted = pd.melt(df_small, id_vars='Label', value_vars=['sbytes', 'dbytes'],
+                        var_name='Direction', value_name='Bytes')
+
+    df_melted = df_melted.dropna(subset=['Bytes'])
+    df_melted['Bytes'] = pd.to_numeric(df_melted['Bytes'], errors='coerce')
+
+    # Crear la nueva columna para el eje x
+    df_melted['Grupo'] = df_melted['Direction'] + df_melted['Label'].astype(str)
+
+    # Muestreo para acelerar, si tienes muchos datos
+    df_sampled = df_melted.sample(frac=0.2, random_state=42)
+
+    bytes_chart = alt.Chart(df_sampled).mark_boxplot().encode(
+        x=alt.X('Grupo:N', title=''),
+        y=alt.Y('Bytes:Q', title='Bytes')
+    ).properties(
+        width=400,
+        title='Distribución de bytes enviados y recibidos según tipo de tráfico'
+    )
+
+    return bytes_chart
+
+
+
+# =====================================
+#   GRÁFICO 16: Duración vs Paquetes
+# =====================================
+def chart16(df, palette):
+    cols = ['dur', 'Spkts', 'Dpkts', 'Label']
+    df_small = df[cols]
+
+    # Muestreo para acelerar, si tienes muchos datos
+    df_sampled = df_small.sample(frac=0.2, random_state=42)
+
+    pkt_scatter = alt.Chart(df_sampled).mark_circle(size=10, opacity=0.4).encode(
+        x='dur:Q',
+        y='Spkts:Q',
+        color=alt.Color('Label:N',
+            scale=alt.Scale(domain=[0, 1], range=['blue', 'red']),
+            legend=alt.Legend(title='Label')
+        ),
+        tooltip=['dur', 'Spkts', 'Dpkts']
+    ).interactive().properties(
+        title='Duración de las conexiones vs número de paquetes enviados'
+    )
+
+    return pkt_scatter
 
 
 
@@ -391,18 +469,22 @@ security_palette = ['#1f2937', '#10b981', '#2563eb', '#f59e42', '#f43f5e', '#647
 # Título principal
 st.title("Análisis de Seguridad en Tráfico de Red")
 st.subheader("Visualización interactiva de tráfico normal y malicioso")
+st.write(
+    "Explora de forma interactiva el tráfico normal y malicioso en redes IoT utilizando el conjunto de datos [UNSW-NB15](https://research.unsw.edu.au/projects/unsw-nb15-dataset). "
+    "Este dataset, generado en un entorno virtual con el programa IXIA, simula escenarios realistas de ciberseguridad en sistemas IoT."
+)
 
 # Tabs principales
 tab1, tab2, tab3 = st.tabs([
     "Visión General del Tráfico de Red",
-    "Análisis del Tráfico Malicioso",
+    "Composición del Tráfico Malicioso",
     "Análisis de Rendimiento y Efectos del Ataque"
 ])
 
 
 with tab1:
     st.header("Visión General del Tráfico de Red")
-    st.write("El objetivo de este panel es ofrecer una panorámica rápida del volumen, distribución y tipo de tráfico observado.")
+    st.write("El objetivo de este panel es ofrecer una panorámica rápida del volumen, distribución y tipo de tráfico total observado.")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.write("**Conteo de conexiones por día y tipo**")
@@ -434,16 +516,42 @@ with tab1:
         st.altair_chart(chart4(security_palette, df_c4_c5), use_container_width=True)
     with col6:
         st.altair_chart(chart5(security_palette, df_c4_c5), use_container_width=True)
+    
+    src_chart, dst_chart = chart6(security_palette)
+    col7, col8 = st.columns(2)
+    with col7:
+        st.altair_chart(src_chart, use_container_width=True)
+    with col8:
+        st.altair_chart(dst_chart, use_container_width=True)
 
 with tab2:
     st.header("Composición del Tráfico Malicioso")
-    st.write("Se presentan 7 gráficos de tarta que muestran cómo se distribuye el tráfico malicioso según distintas variables categóricas. Esto permite comprender la composición del tráfico malicioso y las características particulares de cada tipo de ataque.")
+    st.write(
+        "Se presentan gráficos de tarta que muestran cómo se compone el tráfico malicioso por cada tipo de ataque. "
+        "Permite comprender la composición y las características particulares de cada tipo de ataque."
+    )
+
+    st.markdown(
+        """
+    **Las variables analizadas son:**
+
+    - **proto**: protocolo de red (e.g., TCP, UDP)
+    - **service**: servicio de red utilizado (e.g., HTTP, FTP, SSH)
+    - **state**: estado de la conexión
+    - **sport**: puerto de origen
+    - **dsport**: puerto de destino
+    - **is_ftp_login**: indica si hubo autenticación FTP
+    - **is_sm_ips_ports**: indica si la IP y puertos origen/destino son iguales
+        """
+    )
 
     attack_cat_selected = st.selectbox(
         "Selecciona el tipo de ataque:",
         options=['Exploits', 'Fuzzers', 'DoS', 'Reconnaissance', 'Analysis', 'Backdoor', 'Shellcode', 'Worms']
     )
-    st.altair_chart(chart14(malicious_data, security_palette, attack_cat=attack_cat_selected), use_container_width=True)
+    pie1, pie2 = chart14(malicious_data, security_palette, attack_cat=attack_cat_selected)
+    st.altair_chart(pie1, use_container_width=True)
+    st.altair_chart(pie2, use_container_width=True)
 
 
 
@@ -451,13 +559,10 @@ with tab3:
     st.header("Análisis de Rendimiento y Efectos del Ataque")
     st.write("Próximamente: métricas de rendimiento y efectos de los ataques en la red.")
 
-    src_chart, dst_chart = chart8(security_palette)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.altair_chart(src_chart, use_container_width=True)
-    with col2:
-        st.altair_chart(dst_chart, use_container_width=True)
-
-    st.altair_chart(chart9(malicious_data, security_palette), use_container_width=True)
+    st.altair_chart(chart7(malicious_data, security_palette), use_container_width=True)
     st.altair_chart(chart10(malicious_data, security_palette), use_container_width=True)
     st.altair_chart(chart11(malicious_data, security_palette), use_container_width=True)
+
+    st.altair_chart(chart15(full_data, security_palette), use_container_width=True)
+    st.altair_chart(chart16(full_data, security_palette), use_container_width=True)
+
