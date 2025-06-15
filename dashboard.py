@@ -309,29 +309,6 @@ def chart10(malicious_data, palette):
     )
 
 
-# =====================================
-#   GRÁFICO 11: TPC RTT vs Syn-ACK
-# =====================================
-def chart11(malicious_data, palette):
-    # Crear selección interactiva por categoría de ataque
-    selection = alt.selection_multi(fields=['attack_cat'], bind='legend')
-
-    rtt_scatter = alt.Chart(malicious_data).mark_circle(size=60, opacity=0.5).encode(
-        x=alt.X('tcprtt:Q', title='TCP Round Trip Time'),
-        y=alt.Y('synack:Q', title='Tiempo SYN-ACK'),
-        color=alt.Color('attack_cat:N', title='Categoría de Ataque'),
-        tooltip=['attack_cat:N', 'tcprtt:Q', 'synack:Q', 'ackdat:Q'],
-        opacity=alt.condition(selection, alt.value(0.7), alt.value(0.1))
-    ).add_params(
-        selection
-    ).properties(
-        title='Relación entre TCP RTT y SYN-ACK'
-    )
-
-    return rtt_scatter
-
-
-
 
 # =====================================
 #   GRÁFICO 14: Función genérica gráfico facetado
@@ -427,29 +404,82 @@ def chart15(df, palette):
 
 
 # =====================================
-#   GRÁFICO 16: Duración vs Paquetes
+#   GRÁFICO 16: Duración vs Paquetes Enviados
 # =====================================
 def chart16(df, palette):
     cols = ['dur', 'Spkts', 'Dpkts', 'Label']
     df_small = df[cols]
 
-    # Muestreo para acelerar, si tienes muchos datos
+    # Muestreo para acelerar
     df_sampled = df_small.sample(frac=0.2, random_state=42)
 
-    pkt_scatter = alt.Chart(df_sampled).mark_circle(size=10, opacity=0.4).encode(
+    spkt_scatter = alt.Chart(df_sampled).mark_circle(size=10, opacity=0.4).encode(
         x='dur:Q',
         y='Spkts:Q',
         color=alt.Color('Label:N',
             scale=alt.Scale(domain=[0, 1], range=['blue', 'red']),
             legend=alt.Legend(title='Label')
         ),
-        tooltip=['dur', 'Spkts', 'Dpkts']
+        tooltip=['dur', 'Spkts']
     ).interactive().properties(
-        title='Duración de las conexiones vs número de paquetes enviados'
+        title='Duración de las conexiones vs número de Paquetes Enviados'
     )
 
-    return pkt_scatter
+    dpkt_scatter = alt.Chart(df_sampled).mark_circle(size=10, opacity=0.4).encode(
+        x='dur:Q',
+        y='Dpkts:Q',
+        color=alt.Color('Label:N',
+            scale=alt.Scale(domain=[0, 1], range=['blue', 'red']),
+            legend=alt.Legend(title='Label')
+        ),
+        tooltip=['dur', 'Dpkts']
+    ).interactive().properties(
+        title='Duración de las conexiones vs número de Paquetes Recibidos'
+    )
 
+    return spkt_scatter, dpkt_scatter
+
+
+
+# =====================================
+#   GRÁFICO 17: IPs origen y destino más activos
+# =====================================
+def chart17(palette, df):
+    # IPs origen más activas (con observed=True para evitar el warning)
+    top_src_ips = df.groupby(['srcip', 'Label'], observed=True).size().reset_index(name='count')
+
+    # Selecciona las 10 IPs de origen más activas en total
+    top_src = top_src_ips.groupby('srcip')['count'].sum().nlargest(10).index
+    top_src_ips = top_src_ips[top_src_ips['srcip'].isin(top_src)]
+
+    src_chart = alt.Chart(top_src_ips).mark_bar().encode(
+        y=alt.Y('srcip:N', sort='-x', title='IP Origen'),
+        x=alt.X('count:Q', title='Número de Conexiones'),
+        color=alt.Color('Label:N', title='Tráfico', scale=alt.Scale(domain=[0, 1], range=['#10b981', '#f43f5e']),
+                        legend=alt.Legend(title='Tráfico', labelExpr="datum.value == 1 ? 'Malicioso' : 'Normal'")),
+        tooltip=['srcip:N', 'Label:N', 'count:Q']
+    ).properties(
+        title='Top 10 IPs de Origen más Activas'
+    )
+
+    # IPs destino más activas (malicioso y no malicioso)
+    top_dst_ips = df.groupby(['dstip', 'Label'], observed=True).size().reset_index(name='count')
+
+    # Selecciona las 10 IPs de destino más activas en total
+    top_dst = top_dst_ips.groupby('dstip')['count'].sum().nlargest(10).index
+    top_dst_ips = top_dst_ips[top_dst_ips['dstip'].isin(top_dst)]
+
+    dst_chart = alt.Chart(top_dst_ips).mark_bar().encode(
+        y=alt.Y('dstip:N', sort='-x', title='IP Destino'),
+        x=alt.X('count:Q', title='Número de Conexiones'),
+        color=alt.Color('Label:N', title='Tráfico', scale=alt.Scale(domain=[0, 1], range=['#10b981', '#f43f5e']),
+                        legend=alt.Legend(title='Tráfico', labelExpr="datum.value == 1 ? 'Malicioso' : 'Normal'")),
+        tooltip=['dstip:N', 'Label:N', 'count:Q']
+    ).properties(
+        title='Top 10 IPs de Destino más Activas'
+    )
+
+    return src_chart, dst_chart
 
 
 # =====================================
@@ -475,9 +505,10 @@ st.write(
 )
 
 # Tabs principales
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "Visión General del Tráfico de Red",
     "Composición del Tráfico Malicioso",
+    "Características de Ataques Maliciosos",
     "Análisis de Rendimiento y Efectos del Ataque"
 ])
 
@@ -494,7 +525,7 @@ with tab1:
     with col3:
         st.altair_chart(chart3(security_palette), use_container_width=True)
     
-    st.markdown("### Top 10 protocolos y servicios")
+    st.markdown("### Top 10 protocolos, servicios e IPs")
     col4, _ = st.columns([2, 1])
     with col4:
         chart4_chart5_filter = st.radio(
@@ -505,38 +536,41 @@ with tab1:
             key="proto_filter"
         )
         if chart4_chart5_filter == "Malicioso":
-            df_c4_c5 = full_data[full_data['Label'] == 1]
+            df_seleccionado = full_data[full_data['Label'] == 1]
         elif chart4_chart5_filter == "Normal":
-            df_c4_c5 = full_data[full_data['Label'] == 0]
+            df_seleccionado = full_data[full_data['Label'] == 0]
         else:
-            df_c4_c5 = full_data
+            df_seleccionado = full_data
 
     col5, col6 = st.columns([1, 1])
     with col5:
-        st.altair_chart(chart4(security_palette, df_c4_c5), use_container_width=True)
+        st.altair_chart(chart4(security_palette, df_seleccionado), use_container_width=True)
     with col6:
-        st.altair_chart(chart5(security_palette, df_c4_c5), use_container_width=True)
+        st.altair_chart(chart5(security_palette, df_seleccionado), use_container_width=True)
     
-    src_chart, dst_chart = chart6(security_palette)
-    col7, col8 = st.columns(2)
+    src_chart, dst_chart = chart17(security_palette, df_seleccionado)
+    col7, col8 = st.columns([1, 1])
     with col7:
         st.altair_chart(src_chart, use_container_width=True)
     with col8:
         st.altair_chart(dst_chart, use_container_width=True)
+    
+    
 
 with tab2:
     st.header("Composición del Tráfico Malicioso")
     st.write(
-        "Se presentan gráficos de tarta que muestran cómo se compone el tráfico malicioso por cada tipo de ataque. "
+        "Se presentan gráficos que muestran cómo se compone el tráfico malicioso por cada tipo de ataque. "
         "Permite comprender la composición y las características particulares de cada tipo de ataque."
     )
+
 
     st.markdown(
         """
     **Las variables analizadas son:**
 
-    - **proto**: protocolo de red (e.g., TCP, UDP)
-    - **service**: servicio de red utilizado (e.g., HTTP, FTP, SSH)
+    - **proto**: protocolo de red (p.ej., TCP, UDP)
+    - **service**: servicio de red utilizado (p. ej., HTTP, FTP, SSH)
     - **state**: estado de la conexión
     - **sport**: puerto de origen
     - **dsport**: puerto de destino
@@ -553,16 +587,44 @@ with tab2:
     st.altair_chart(pie1, use_container_width=True)
     st.altair_chart(pie2, use_container_width=True)
 
+    
+
 
 
 with tab3:
-    st.header("Análisis de Rendimiento y Efectos del Ataque")
-    st.write("Próximamente: métricas de rendimiento y efectos de los ataques en la red.")
+    st.header("Análisis de las Características por Tipología de Ataque")
+    st.write("Este análisis permite comprender cómo se comporta cada tipo de ataque. Se examinan tanto los orígenes y destinos del tráfico malicioso como métricas clave como el volumen de paquetes y las tasas de pérdida.")
 
+    st.markdown("### Principales IPs implicadas")
+
+    st.write("Estos gráficos permiten visualizar rápidamente los principales focos de emisión y recepción de tráfico malicioso, así como los tipos de ataque asociados a cada uno. Esta información es clave para priorizar acciones de mitigación, ya sea bloqueando fuentes, reforzando objetivos o ajustando reglas de detección.")
+
+    src_chart, dst_chart = chart6(security_palette)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.altair_chart(src_chart, use_container_width=True)
+    with col2:
+        st.altair_chart(dst_chart, use_container_width=True)
+
+    st.markdown("### Comparativa de volumen de paquetes por tipo de ataque")
+    st.write("Ayuda a entender el comportamiento del tráfico de cada ataque. Por ejemplo, si un ataque implica una gran cantidad de paquetes salientes desde el sistema comprometido.")
     st.altair_chart(chart7(malicious_data, security_palette), use_container_width=True)
+    
+    st.markdown("### Pérdida de paquetes en origen y destino por ataque")
+    st.write("Revela si ciertos tipos de ataque están relacionados con mayores tasas de pérdida, lo cual puede ser un indicador de congestión de red o saturación de recursos.")
     st.altair_chart(chart10(malicious_data, security_palette), use_container_width=True)
-    st.altair_chart(chart11(malicious_data, security_palette), use_container_width=True)
 
+
+with tab4:
+    st.header("Análisis de Rendimiento y Efectos del Tráfico Normal y Malicioso")
+    st.write("Analizar el impacto de ataques de red sobre el rendimiento del sistema, identificando los patrones de comportamiento del tráfico malicioso.")
+
+    st.markdown("### Distribución de bytes enviados y recibidos por tipo de tráfico")
+    st.write("Permite observar si los ataques presentan valores atípicos o si tienen una distribución irregular, lo que puede ayudar a desarrollar algoritmos de detección automática de anomalías.")
     st.altair_chart(chart15(full_data, security_palette), use_container_width=True)
-    st.altair_chart(chart16(full_data, security_palette), use_container_width=True)
 
+    st.markdown("### Duración vs Paquetes enviados y recibidos")
+    st.write("Permite identificar patrones de comportamiento. Por ejemplo, ataques que generan conexiones de larga duración con muchos paquetes.")
+    spkts_chart, dspkts_chart = chart16(full_data, security_palette)
+    st.altair_chart(spkts_chart, use_container_width=True)
+    st.altair_chart(dspkts_chart, use_container_width=True)
