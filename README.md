@@ -9,7 +9,7 @@ An interactive web dashboard for visualizing and analyzing the **UNSW-NB15 datas
 
 The dashboard is built with **Streamlit** and **Altair**.
 
-This project was developed for the Data Visualization (Visualización de Datos) course, part of the Master's Degree in Data Science & Engineering at UNED.
+This project was developed during the 2024-2025 academic year for the Data Visualization (Visualización de Datos) course, part of the Master's Degree in Data Science & Engineering at UNED.
 
 
 
